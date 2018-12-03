@@ -57,30 +57,37 @@ def read_raw_data(addr):
 class Telemetrics():
 	"""docstring for Telemetrics """
 	def __init__(self, arg):
-		self.conn = socket.socket()
-		host = '192.168.0.101' #ip of raspberry pi
-		port = 12355
-		self.conn.bind((host, port))
+		self.socket = socket.socket()
+		host = '192.168.0.100' #ip of raspberry pi
+		port = 12345
+		self.socket.bind((host, port))
 		self.arg = arg
 	def SendData(self, gyroData):
 		Ax, Ay, Az, Gx, Gy, Gz =  gyroData;
+		print ("Gx=%.2f" %Gx, "Gy=%.2f" %Gy, "Gz=%.2f" %Gz, "Ax=%.2f g" %Ax, "Ay=%.2f g" %Ay, "Az=%.2f g" %Az);
 		data_packed = struct.pack('!dddddd', Ax, Ay, Az, Gx, Gy, Gz);
 		self.conn.sendall(data_packed)
 
 	def CloseConnection(self):
-		self.conn.close()
+		self.conn.close();
+		self.socket.close();
+
 	def AcceptConnection(self):
-		self.conn.listen(5)
-		c, addr = self.conn.accept()
+		self.socket.listen(5)
+		self.conn, addr = self.socket.accept()
 		print ('Got connection from', addr)
 
 def MainLoop (queue, telemetrics):
 	#c.send('Thank you for connecting')
 	# for i in range(100):
+	print("Waiting to accept connection.")
+	telemetrics.AcceptConnection();
+
 	print("Starting the gyro thread");
 	while True:
 		if not queue.empty():
 			stop = queue.get()
+			print("Stopping the gyro thread");
 			break;
 		#Read Accelerometer raw value
 		acc_x = read_raw_data(ACCEL_XOUT_H)
@@ -119,24 +126,22 @@ class GyroThread():
 		self.isRunning = False;
 		self.queue = Queue.Queue()
 		self.telemetrics = Telemetrics(None);
-		print("Waiting to accept connection.")
-		self.telemetrics.AcceptConnection();
-
 
 	def Start(self):
-		print("Starting gyro thread");
 		if self.isRunning == False:
 			self.thread = threading.Thread(target = MainLoop,
 				args = (self.queue, self.telemetrics,)
-				).start();
+				);
+			self.thread.start();
 			self.isRunning = True;
 
 	def Stop(self):
-		print("Stopping gyro thread");
 		if self.isRunning == True:
 			stop = True;
 			self.queue.put(stop);
-		# self.thread.join();
+		self.thread.join();
+		if self.telemetrics:
+			self.telemetrics.CloseConnection();
 
 
 if __name__ =='__main__' :
@@ -145,12 +150,10 @@ if __name__ =='__main__' :
 
 	MPU_Init()
 
-	print (" Reading Data of Gyroscope and Accelerometer")
-
 	gyroThread = GyroThread(True);
 	gyroThread.Start();
 
-	sleep(5);
+	sleep(20);
 
 	gyroThread.Stop();
 
