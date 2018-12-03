@@ -3,8 +3,8 @@ import struct
 
 s = socket.socket()        
 
-host = '192.168.0.106'# ip of raspberry pi 
-port = 12344
+host = '192.168.0.101'# ip of raspberry pi 
+port = 12355
 s.connect((host, port))
 while True:
 	data = s.recv(48);

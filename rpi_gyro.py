@@ -1,5 +1,5 @@
 '''
-        Read Gyro and Accelerometer by Interfacing Raspberry Pi with MPU6050 using Python
+    Read Gyro and Accelerometer by Interfacing Raspberry Pi with MPU6050 using Python
 	http://www.electronicwings.com
 '''
 import smbus			#import SMBus module of I2C
@@ -8,7 +8,8 @@ import struct
 import socket
 import signal
 import sys
-import threading
+import threading, Queue
+import traceback
 
 #some MPU6050 Registers and their Address
 PWR_MGMT_1   = 0x6B
@@ -52,13 +53,35 @@ def read_raw_data(addr):
                 value = value - 65536
         return value
 
-def MainLoop ():
-	s.listen(5)
-	c, addr = s.accept()
-	print ('Got connection from', addr)
+
+class Telemetrics():
+	"""docstring for Telemetrics """
+	def __init__(self, arg):
+		self.conn = socket.socket()
+		host = '192.168.0.101' #ip of raspberry pi
+		port = 12355
+		self.conn.bind((host, port))
+		self.arg = arg
+	def SendData(self, gyroData):
+		Ax, Ay, Az, Gx, Gy, Gz =  gyroData;
+		data_packed = struct.pack('!dddddd', Ax, Ay, Az, Gx, Gy, Gz);
+		self.conn.sendall(data_packed)
+
+	def CloseConnection(self):
+		self.conn.close()
+	def AcceptConnection(self):
+		self.conn.listen(5)
+		c, addr = self.conn.accept()
+		print ('Got connection from', addr)
+
+def MainLoop (queue, telemetrics):
 	#c.send('Thank you for connecting')
 	# for i in range(100):
-	while run	:
+	print("Starting the gyro thread");
+	while True:
+		if not queue.empty():
+			stop = queue.get()
+			break;
 		#Read Accelerometer raw value
 		acc_x = read_raw_data(ACCEL_XOUT_H)
 		acc_y = read_raw_data(ACCEL_YOUT_H)
@@ -78,16 +101,43 @@ def MainLoop ():
 		Gy = gyro_y/131.0
 		Gz = gyro_z/131.0
 		
+		gyroData = [Ax, Ay, Az, Gx, Gy, Gz];
 
-#			print ("Gx=%.2f" %Gx, u'\u00b0'+ "/s", "\tGy=%.2f" %Gy, u'\u00b0'+ "/s", "\tGz=%.2f" %Gz, u'\u00b0'+ "/s", "\tAx=%.2f g" %Ax, "\tAy=%.2f g" %Ay, "\tAz=%.2f g" %Az)
+		print ("Gx=%.2f" %Gx, "Gy=%.2f" %Gy, "Gz=%.2f" %Gz, "Ax=%.2f g" %Ax, "Ay=%.2f g" %Ay, "Az=%.2f g" %Az);
+		try:
+			telemetrics.SendData(gyroData)
+		except Exception, err:
+		    traceback.print_exc()
+		    break;
+	print("Stopping gyro thread.");
 
-		data_packed = struct.pack('!dddddd', Ax, Ay, Az, Gx, Gy, Gz);
-		c.sendall(data_packed)
+class GyroThread():
 
-	c.close()
-	print("Closing connection.");
+	"""docstring for GyroThread"""
+	def __init__(self, doStreamData):
+		self.doStreamData = doStreamData;
+		self.isRunning = False;
+		self.queue = Queue.Queue()
+		self.telemetrics = Telemetrics(None);
+		print("Waiting to accept connection.")
+		self.telemetrics.AcceptConnection();
 
-run = True;
+
+	def Start(self):
+		print("Starting gyro thread");
+		if self.isRunning == False:
+			self.thread = threading.Thread(target = MainLoop,
+				args = (self.queue, self.telemetrics,)
+				).start();
+			self.isRunning = True;
+
+	def Stop(self):
+		print("Stopping gyro thread");
+		if self.isRunning == True:
+			stop = True;
+			self.queue.put(stop);
+		# self.thread.join();
+
 
 if __name__ =='__main__' :
 	bus = smbus.SMBus(1) 	# or bus = smbus.SMBus(0) for older version boards
@@ -97,18 +147,19 @@ if __name__ =='__main__' :
 
 	print (" Reading Data of Gyroscope and Accelerometer")
 
-	s = socket.socket()
-	host = '192.168.0.106' #ip of raspberry pi
-	port = 12344
-	s.bind((host, port))
+	gyroThread = GyroThread(True);
+	gyroThread.Start();
 
-	threading.Thread(target=MainLoop).start();
-	print("Starting the gyro thread");
+	sleep(5);
 
-	while  True :
-		inp = raw_input("Enter: ");
-		if inp == 'x':
-			print("Exiting !!")
-			break;
+	gyroThread.Stop();
 
-	run = False;
+	# threading.Thread(target=MainLoop).start();
+
+	# while  True :
+	# 	inp = raw_input("Enter: ");
+	# 	if inp == 'x':
+	# 		print("Exiting !!")
+	# 		break;
+
+	# run = False;
